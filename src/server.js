@@ -2,6 +2,7 @@ import http from "http";
 import WebSocket from "ws";
 import express from "express";
 import SocketIO from "socket.io";
+import { SIGUNUSED } from "constants";
 
 const app = express();
 
@@ -17,11 +18,42 @@ const handleListen = () => console.log(`listen on http://localhost:3000`);
 const server = http.createServer(app);
 const io = SocketIO(server);
 
+const publicRoom = () => {
+  const {
+    sockets: {
+      adapter: { sids, rooms },
+    },
+  } = io;
+  const publicRooms = [];
+
+  rooms.forEach((_, key) => {
+    if (sids.get(key) === undefined) {
+      publicRooms.push(key);
+    }
+  });
+  return publicRooms;
+};
+
+const countRoom = (roomName) => {
+  return io.sockets.adapter.rooms.get(roomName)?.size;
+};
+
 io.on("connection", (socket) => {
   socket.on("enter_room", (roomName, done) => {
     socket.join(roomName);
     done();
     socket.to(roomName).emit("welcome");
+    io.sockets.emit("room_change", publicRoom());
+  });
+  socket.on("disconnecting", () => {
+    socket.rooms.forEach(
+      (room) => socket.to(room).emit("bye"),
+      countRoom(room) - 1
+    );
+  });
+  socket.on("new_message", (msg, roomName, done) => {
+    socket.to(roomName).emit("new_message", msg);
+    done();
   });
 });
 
